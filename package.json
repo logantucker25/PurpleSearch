@@ -1,0 +1,35 @@
+{
+  "name": "algotestspace1",
+  "version": "1.0.0",
+  "description": "![Team Photo](Insert a Team Photo URL here) [*how?*](https://help.github.com/articles/about-readmes/#relative-links-and-image-paths-in-readme-files)",
+  "main": "index.js",
+  "scripts": {
+    "build": "npm run build:java && npm run build:react",
+    "build:java": "mvn clean compile",
+    "build:react": "cd frontend && npm run build",
+    "start": "npm run build && concurrently \"npm run serve:java\" \"npm run serve:electron\"",
+    "serve:java": "mvn exec:java -Dexec.mainClass=main.Main",
+    "serve:electron": "cd frontend && npx electron .",
+    "start:dev": "concurrently \"npm run serve:java\" \"npm run dev:react\" \"npm run dev:electron\"",
+    "dev:react": "cd frontend && npm start",
+    "dev:electron": "cd frontend && npx electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/CS98-25W-25S/AlgoTestSpace1/issues"
+  },
+  "homepage": "https://github.com/CS98-25W-25S/AlgoTestSpace1#readme",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "@neo4j-nvl/react": "^0.3.8",
+    "gpt-3-encoder": "^1.1.4",
+    "lodash": "^4.17.21",
+    "neo4j-driver": "^5.28.1",
+    "react-scripts": "^5.0.1",
+    "vis-network": "^9.1.9"
+  }
+}
