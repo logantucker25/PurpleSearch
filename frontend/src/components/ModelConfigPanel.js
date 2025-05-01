@@ -129,7 +129,7 @@ export default function ModelConfigPanel({
             size="small"
             variant="outlined"
             sx={{ ml: 2, minWidth: 'auto', height: 28 }}
-            href="https://huggingface.co/nomic-ai/nomic-embed-code"
+            href="https://huggingface.co/Salesforce/SFR-Embedding-Code-400M_R"
             target="_blank"
             rel="noopener noreferrer"
           >
