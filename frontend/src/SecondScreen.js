@@ -13,11 +13,13 @@ import {
   createTheme,
   ThemeProvider,
   CircularProgress,
+  Tooltip,
 } from '@mui/material';
 
 import SearchIcon from '@mui/icons-material/Search';
 import ChatIcon from '@mui/icons-material/Chat';
 import SendIcon from '@mui/icons-material/Send';
+import QuestionMarkIcon from '@mui/icons-material/QuestionMark';
 import ModelConfigPanel from './components/ModelConfigPanel';
 import useModelConfig from './hooks/useModelConfig';
 import vectorImg from './art/pbrain.png';
