@@ -31,6 +31,50 @@ const LoadingScreen = ({ message }) => (
   </Box>
 );
 
+const SuggestedQuestions = ({ questions, onQuestionClick }) => {
+  if (!questions || questions.length === 0) return null;
+
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+        <QuestionMarkIcon fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />
+        <Typography variant="subtitle2" color="primary.main">
+          Suggested follow-up questions
+        </Typography>
+      </Box>
+
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+        {questions.map((question, idx) => (
+          <Box
+            key={idx}
+            onClick={() => onQuestionClick(question)}
+            sx={{
+              width: '100%',
+              px: 2,
+              py: 1,
+              borderRadius: '16px',
+              bgcolor: 'primary.light',
+              color: 'white',
+              maxWidth: '900px',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+              cursor: 'pointer',
+              fontWeight: 400,
+              transition: 'all 0.2s',
+              '&:hover': {
+                bgcolor: 'primary.main',
+                boxShadow: 1,
+              },
+            }}
+          >
+            {question}
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+};
+
 export default function SecondScreen({ onBackToWizard }) {
 
   const [driver, setDriver] = useState(null);
@@ -40,6 +84,11 @@ export default function SecondScreen({ onBackToWizard }) {
   const [chatClusters, setChatClusters] = useState([]);
   const [currentClusterIndex, setCurrentClusterIndex] = useState(0);
   const [lastQuery, setLastQuery] = useState('');
+  const [secondLastQuery, setSecondLastQuery] = useState('');
+
+  // Add notification state for clipboard copy
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   // Create theme
   const theme = createTheme({
@@ -143,6 +192,27 @@ export default function SecondScreen({ onBackToWizard }) {
   const [isThinking, setIsThinking] = useState(false);
   const [viewMode, setViewMode] = useState('chat');
 
+  // New state for suggested questions
+  const [suggestedQuestions, setSuggestedQuestions] = useState([]);
+
+  // Function to copy text to clipboard
+  const copyToClipboard = (text, type) => {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setSnackbarMessage(`${type} query copied to clipboard`);
+        setSnackbarOpen(true);
+      })
+      .catch(err => {
+        console.error('Failed to copy text: ', err);
+        setSnackbarMessage('Failed to copy to clipboard');
+        setSnackbarOpen(true);
+      });
+  };
+
+  // Handle snackbar close
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
+  };
 
   // -------------------------------------------------------
   // JSON PARSING LOGIC HERE
@@ -240,6 +310,41 @@ export default function SecondScreen({ onBackToWizard }) {
     return reply;
   }
 
+  // Generate suggested questions based on LLM reply
+  const generateSuggestedQuestions = async (reply, query) => {
+    try {
+      const systemMsg = {
+        role: 'system',
+        content: `You are Maxwell an ai assitant that generates follow up questions. Here is the scenario: 
+        There is a human user who has a query about a codebase. The human has given that query to an ai assistant named Kevin. 
+        Kevin has been given that users query and atempted to answer it using his limited knowledge of the codebase. 
+        Carefully compare Kevin’s answer with the user’s query. Identify any parts of the user’s query that Kevin didn’t 
+        fully or clearly address. Then write follow-up questions that would help complete or clarify the original query. 
+        Output your response as a JSON array of strings. Example: ["question", "question", "question"]`
+      };
+      
+      const userMsg = {
+        role: 'user',
+        content: `Human user query about a codebase:\n\n"${query}"\n\nKevin the ai assistant's answer:\n\n"${reply}"\n\nGenerate 3-5 concise follow-up questions.`
+      };
+      
+      const questionsText = await callOpenAI([systemMsg, userMsg]);
+      
+      // Parse the questions from the response
+      // const questionsList = questionsText
+      //   .split(/\d+\.|\n-|\n•/)  // Split by numbered lists, bullet points, etc.
+      //   .map(q => q.trim())
+      //   .filter(q => q && q.length > 5 && q.length < 60 && q.endsWith('?')) // Only keep proper questions
+      //   .slice(0, 5);  // Limit to 5 questions
+
+      const questionsList = JSON.parse(questionsText).slice(0, 3);
+        
+      setSuggestedQuestions(questionsList);
+    } catch (err) {
+      console.error('[Suggestions] Failed to generate questions:', err);
+      setSuggestedQuestions([]);
+    }
+  };
 
   const latestReq = useRef(0);
 
@@ -250,6 +355,7 @@ export default function SecondScreen({ onBackToWizard }) {
 
     setCurrentClusterIndex(newIndex);
     setChatMessages([]);
+    setSuggestedQuestions([]);
 
     ; (async () => {
       await loadCluster(graphClusters, newIndex);
@@ -266,6 +372,8 @@ export default function SecondScreen({ onBackToWizard }) {
 
     // saftey agains flurry clicks on prev and next
     if (reqId !== latestReq.current) return;
+    
+    setSuggestedQuestions([]);
 
     // const tokenLimit = ((Number(config.llm?.tpr)) * 4) - 750 || 40000;
 
@@ -319,6 +427,10 @@ export default function SecondScreen({ onBackToWizard }) {
       const text = await callOpenAI([systemMsg, userMsg]);
       if (reqId !== latestReq.current) return;
       setChatMessages(prev => [...prev, { role: 'assistant', text }]);
+      
+      // Generate suggested questions after LLM reply is ready
+      await generateSuggestedQuestions(text, originalQuery);
+
     } catch (err) {
       if (reqId !== latestReq.current) return;
       setChatMessages(prev => [...prev, { role: 'assistant', text: `Error: ${err.message}` }]);
@@ -329,6 +441,11 @@ export default function SecondScreen({ onBackToWizard }) {
     }
   };
 
+  // Handle clicking on a suggested question
+  const handleSuggestedQuestionClick = (question) => {
+    setUserInput(question);
+    handleSubmit(question);
+  };
 
   const handleSubmit = async () => {
     const trimmed = userInput.trim();
@@ -337,6 +454,8 @@ export default function SecondScreen({ onBackToWizard }) {
     if (mode === 'search') {
       setSearchError(null);
       setIsSearching(true);
+      setSuggestedQuestions([]);
+
       try {
         const response = await fetch('http://localhost:8080/api/query', {
           method: 'POST',
@@ -357,6 +476,8 @@ export default function SecondScreen({ onBackToWizard }) {
         const reqId = ++latestReq.current;
         setCurrentClusterIndex(0);
         setChatMessages([]);
+        
+        setSecondLastQuery(lastQuery);
         setLastQuery(trimmed);
         await loadCluster(graph, 0);
 
@@ -373,7 +494,7 @@ export default function SecondScreen({ onBackToWizard }) {
 
     } else {
 
-      // mode === 'talk': we only simulate chat
+      // mode === 'talk': NOT IMPLIMENTED IN V1
       const userMsg = { role: 'user', text: trimmed };
       setChatMessages((prev) => [...prev, userMsg]);
       setIsThinking(true);
@@ -463,7 +584,7 @@ export default function SecondScreen({ onBackToWizard }) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }} >
 
 
-            {/* Example: "Connected" chips */}
+            {/* "Connected" chips */}
             <Chip
               icon={
                 <div
@@ -545,12 +666,55 @@ export default function SecondScreen({ onBackToWizard }) {
                   borderColor: 'divider',
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'space-between', // Add this to push items to the edges
                 }}
               >
-                <SearchIcon color="primary" sx={{ mr: 1 }} />
-                <Typography variant="h6" color="primary">
-                  Graph Search
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <SearchIcon color="primary" sx={{ mr: 1 }} />
+                  <Typography variant="h6" color="primary">
+                    Graph Search
+                  </Typography>
+                </Box>
+                
+                {/* Add the query buttons here */}
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Tooltip title={secondLastQuery || "No previous query"} arrow>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => copyToClipboard(secondLastQuery, "Previous")}
+                      disabled={!secondLastQuery}
+                      sx={{ 
+                        color: '#d32f2f', 
+                        borderColor: '#d32f2f',
+                        '&:hover': { 
+                          borderColor: '#b71c1c',
+                          backgroundColor: 'rgba(211, 47, 47, 0.04)' 
+                        }
+                      }}
+                    >
+                      prevQ
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title={lastQuery || "No current query"} arrow>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => copyToClipboard(lastQuery, "Current")}
+                      disabled={!lastQuery}
+                      sx={{ 
+                        color: '#2e7d32', 
+                        borderColor: '#2e7d32',
+                        '&:hover': { 
+                          borderColor: '#1b5e20',
+                          backgroundColor: 'rgba(46, 125, 50, 0.04)' 
+                        }
+                      }}
+                    >
+                      curQ
+                    </Button>
+                  </Tooltip>
+                </Box>
               </CardContent>
 
               {/* Single wrapper that fills the remaining height */}
@@ -619,29 +783,40 @@ export default function SecondScreen({ onBackToWizard }) {
 
                 {chatMessages.length === 0 && !isThinking ? (
                   <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: 'text.secondary' }}>
-                    <Typography >No searches yet</Typography>
+                    <Typography >No queries yet</Typography>
                     <Typography >LLM analysis of currently viewed cluster will apear here</Typography>
                   </Box>
                 ) : (
-                  chatMessages.map((msg, idx) => (
-                    <Box key={idx} sx={{ mb: 2, display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                      <Paper
-                        sx={{
-                          p: 2,
-                          borderRadius: 2,
-                          bgcolor: msg.role === 'user' ? 'primary.light' : 'background.paper',
-                          color: msg.role === 'user' ? 'white' : 'text.primary',
-                          maxWidth: '80%',             // never wider than 80% of panel
-                          whiteSpace: 'pre-wrap',      // preserve newlines but wrap long words
-                          wordBreak: 'break-word',     // break very long words/URLs
-                          overflowWrap: 'break-word',  // extra safety
-                        }}>
-                        <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
-                          {msg.text}
-                        </Typography>
-                      </Paper>
-                    </Box>
-                  ))
+                  <>
+                    
+                    {/* Chat messages */}
+                    {chatMessages.map((msg, idx) => (
+                      <Box key={idx} sx={{ mb: 2, display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                        <Paper
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            bgcolor: msg.role === 'user' ? 'primary.light' : 'background.paper',
+                            color: msg.role === 'user' ? 'white' : 'text.primary',
+                            maxWidth: '100%',             // never wider than 80% of panel
+                            whiteSpace: 'pre-wrap',      // preserve newlines but wrap long words
+                            wordBreak: 'break-word',     // break very long words/URLs
+                            overflowWrap: 'break-word',  // extra safety
+                          }}>
+                          <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                            {msg.text}
+                          </Typography>
+                        </Paper>
+                      </Box>
+                    ))}
+                    {/* Suggested Questions - only shown when there's a finished reply and questions available */}
+                    {!isThinking && suggestedQuestions.length > 0 && (
+                      <SuggestedQuestions 
+                        questions={suggestedQuestions} 
+                        onQuestionClick={handleSuggestedQuestionClick} 
+                      />
+                    )}
+                  </>
                 )}
                 {isThinking && (
                   <Box sx={{ display: 'flex', mt: 2 }}>
@@ -655,8 +830,6 @@ export default function SecondScreen({ onBackToWizard }) {
             </Card>
           </Box>
         </Box>
-
-
 
         {/* ---------------------------------------------------------- */}
         {/* bottom tool bar */}
